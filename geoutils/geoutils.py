@@ -11,16 +11,91 @@ R = 6371
 class Point(object):
     def __init__(self, lat, lon):
         """in degrees"""
-        self.lat = lat
-        self.lon = lon
+        self._lat = lat
+        self._lon = lon
 
-    def to_radians(self):
-        self.lat = radians(self.lat)
-        self.lon = radians(self.lon)
+    @classmethod
+    def from_radians(cls, lat, lon):
+        return cls(degrees(lat), degrees(lon))
 
-    def to_degrees(self):
-        self.lat = degrees(self.lat)
-        self.lon = degrees(self.lon)
+    @property
+    def lat(self):
+        return radians(self._lat)
+
+    @lat.setter
+    def lat(self, lat):
+        self._lat = lat
+
+    @property
+    def lon(self):
+        return radians(self._lon)
+
+    @lon.setter
+    def lon(self, lon):
+        self._lon = lon
+
+    def __sub__(self, other):
+        if isinstance(other, Point):
+            return Point.from_radians(self.lat - other.lat, self.lon - other.lon)
+        else:
+            return NotImplemented
+
+
+def haversine_distance(*points):
+    """
+    points is (Point1, Point2)
+    """
+    start, end = points
+    delta = end - start
+    a = pow(sin(delta.lat / 2), 2) +\
+        cos(start.lat)*cos(end.lat)*pow(sin(delta.lon / 2), 2)
+    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    return R * c
+
+
+def bearing(*points):
+    """
+    points is (Point1, Point2)
+    """
+    start, end = points
+    delta = end - start
+    theta = atan2(sin(delta.lon)*cos(end.lat),
+       cos(start.lat)*sin(end.lat) - sin(start.lat)*cos(end.lat)*cos(delta.lon))
+    return degrees(theta)
+
+
+def endpoint(start, bearing, distance):
+    """
+    start is Point
+    bearing is in degree
+    distance is in km
+    """
+    delta = distance / R
+    bearing = radians(bearing)
+    end_lat = asin(sin(start.lat)*cos(delta) + cos(start.lat)*sin(delta)*cos(bearing))
+    end_lon = start.lon + atan2(sin(bearing)*sin(delta)*cos(start.lat),
+        cos(delta) - sin(start.lat)*sin(end_lat))
+    return Point.from_radians(end_lat, end_lon)
+
+
+def great_circle_route(start, end, resolution):
+    """
+    start, end are Point
+    resolution is in km
+    """
+    final = end
+    points = []
+    points.append(start)
+    distance = haversine_distance(start, end)
+    n_segments = int(distance / resolution) - 1
+    direction = bearing(start, end)
+    for i in range(n_segments):
+        end = endpoint(start, direction, resolution)
+        direction = (bearing(end, start) + 180) % 360
+        points.append(end)
+        start = end
+    points.append(final)
+    return points
 
 
 def from_dms(degree, minute, second, direction):
@@ -47,71 +122,3 @@ def to_dms(degree, to_dir):
     mins = int((abs(degree) - degs) * 60)
     secs = int((abs(degree) - degs - mins/60) * 3600)
     return degs, mins, secs, suffix
-
-
-def haversine_distance(*points):
-    """
-    points is (Point1, Point2)
-    """
-    start = Point(points[0].lat, points[0].lon)
-    end = Point(points[1].lat, points[1].lon)
-    start.to_radians()
-    end.to_radians()
-    delta_lat = end.lat - start.lat
-    delta_lon = end.lon - start.lon
-    a = pow(sin(delta_lat / 2), 2) +\
-        cos(start.lat)*cos(end.lat)*pow(sin(delta_lon / 2), 2)
-    c = 2 * atan2(sqrt(a), sqrt(1 - a))
-    return R * c
-
-
-def bearing(*points):
-    """
-    points is (Point1, Point2)
-    """
-    start = Point(points[0].lat, points[0].lon)
-    end = Point(points[1].lat, points[1].lon)
-    start.to_radians()
-    end.to_radians()
-    delta_lon = end.lon - start.lon
-    theta = atan2(sin(delta_lon)*cos(end.lat),
-       cos(start.lat)*sin(end.lat) - sin(start.lat)*cos(end.lat)*cos(delta_lon))
-    return degrees(theta)
-
-
-def endpoint(start, bearing, distance):
-    """
-    start is Point
-    bearing is in degree
-    distance is in km
-    """
-    start = Point(start.lat, start.lon)
-    start.to_radians()
-    delta = distance / R
-    bearing = radians(bearing)
-    end_lat = asin(sin(start.lat)*cos(delta) + cos(start.lat)*sin(delta)*cos(bearing))
-    end_lon = start.lon + atan2(sin(bearing)*sin(delta)*cos(start.lat),
-        cos(delta) - sin(start.lat)*sin(end_lat))
-    end = Point(end_lat, end_lon)
-    end.to_degrees()
-    return end
-
-
-def great_circle_route(start, end, resolution):
-    """
-    start, end are Point
-    resolution is in km
-    """
-    points = []
-    points.append(start)
-    final = Point(end.lat, end.lon)
-    distance = haversine_distance(start, end)
-    n_segments = int(distance / resolution) - 1
-    direction = bearing(start, end)
-    for i in range(n_segments):
-        end = endpoint(start, direction, resolution)
-        direction = (bearing(end, start) + 180) % 360
-        points.append(end)
-        start = end
-    points.append(final)
-    return points
